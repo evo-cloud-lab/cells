@@ -12,8 +12,17 @@
         "url": "https://github.com/evo-cloud/cells"
     },
     "main": "./index.js",
+    "bin": {
+        "cells-server": "./server.js"
+    },
     "dependencies": {
-        "js-class": "0.0.2"
+        "js-class":   "0.0.2",
+        "js-flow":    "0.0.1",
+        "js-plugins": "0.0.2",
+        "evo-elements": "git://github.com/evo-cloud/elements",
+        "netmask": "1.0.4",
+        "idgen": "1.3.0",
+        "express": "3.4.8"
     },
     "devDependencies": {
         "mocha": "1.17.1",
@@ -30,6 +39,15 @@
             "url": "https://github.com/evo-cloud/cells/raw/master/LICENSE"
         }
     ],
+    "extensions": {
+        "cells:network.adapter": {
+            "bridge": "./lib/net-adapter-bridge"
+        },
+        "cells:container": {
+            "lxc": "./lib/container-lxc",
+            "qemu": "./lib/container-qemu"
+        }
+    },
     "config": {
         "blanket": {
             "onlyCwd": true,
