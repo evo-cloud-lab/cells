@@ -1,32 +1,65 @@
 #!/usr/bin/env node
 
-var express = require('express'),
-    plugins = require('js-plugins'),
+var plugins  = require('js-plugins'),
     elements = require('evo-elements'),
     Config = elements.Config,
     Logger = elements.Logger,
-    Context = require('./lib/Context');
 
-var context = new Context(Config.conf().opts, new Logger('cells'));
+    Server = require('./lib/Server');
 
-var app = express();
+var logger = new Logger('cells');
 
-app.use(express.json());
-app.use(express.urlencoded());
-app.use(app.router);
+function logErrors(err) {
+    if (err.code == 'ERRORS' && Array.isArray(err.errors)) {
+        err.errors.forEach(logErrors);
+    } else {
+        logger.error(err.message);
+    }
+}
 
-context.registerApi(app);
+function fatal(err) {
+    logErrors(err);
+    process.exit(1);
+}
 
-context.logger.info('Scanning plugins ...');
+var server = new Server(Config.conf().opts, logger);
+
+function initiateExit(code) {
+    if (server.stop(function (err) {
+        err ? fatal(err) : process.exit(code || 0);
+    })) {
+        logger.info('Exiting ...');
+        return true;
+    }
+    return false;
+}
+
+var count = 0;
+function terminateByUser() {
+    if (!initiateExit() && ++ count > 4) {
+        logger.warn('Force exiting now!');
+        process.exit(1);
+    }
+}
+
+logger.info('Scanning plugins ...');
 plugins.instance.scan();
 
-context.logger.info('Starting API server ...');
+logger.info('Starting API server ...');
 var port = process.env.PORT || 3000;
-app.listen(port, function (err) {
+server.start(port, function (err) {
     if (err) {
-        context.logger.error(err.message);
-        process.exit(1);
+        fatal(err);
     } else {
-        context.logger.info('API server is ready on port ' + port);
+        logger.info('API server is ready on port ' + port);
     }
 });
+
+process.on('uncaughtException', function (err) {
+    logErrors(err);
+    logger.debug(err.stack);
+    initiateExit(1);
+});
+
+process.on('SIGTERM', initiateExit);
+process.on('SIGINT', terminateByUser);

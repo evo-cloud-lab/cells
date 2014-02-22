@@ -43,9 +43,32 @@
         "cells:network.adapter": {
             "bridge": "./lib/net-adapter-bridge"
         },
+        "cells:network.service.dhcp": {
+            "dnsmasq": {
+                "module": "./lib/net-service-dnsmasq",
+                "object": "dhcp"
+            }
+        },
+        "cells:network.service.dns": {
+            "dnsmasq": {
+                "module": "./lib/net-service-dnsmasq",
+                "object": "dns"
+            }
+        },
+        "cells:network.service.gateway": {
+            "dnsmasq": {
+                "module": "./lib/net-service-dnsmasq",
+                "object": "gateway"
+            }
+        },
+        "cells:network.service.nat": {
+            "iptables": {
+                "module": "./lib/net-service-iptables",
+                "object": "nat"
+            }
+        },
         "cells:container": {
-            "lxc": "./lib/container-lxc",
-            "qemu": "./lib/container-qemu"
+            "ext": "./lib/container-ext"
         }
     },
     "config": {
