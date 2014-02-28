@@ -19,15 +19,18 @@
         "js-class":   "0.0.2",
         "js-flow":    "0.0.1",
         "js-plugins": "0.0.2",
+        "js-yaml":    "2.1.0",
         "evo-elements": "git://github.com/evo-cloud/elements",
+        "underscore": "1.5.1",
+        "mkdirp":  "0.3.5",
         "netmask": "1.0.4",
-        "idgen": "1.3.0",
+        "idgen":   "1.3.0",
         "express": "3.4.8"
     },
     "devDependencies": {
-        "mocha": "1.17.1",
-        "sandboxed-module": "0.3.0",
-        "blanket": "1.1.6"
+        "mocha":   "1.17.1",
+        "blanket": "1.1.6",
+        "sandboxed-module": "0.3.0"
     },
     "engines": {
         "node": ">=0.10",
@@ -40,35 +43,25 @@
         }
     ],
     "extensions": {
+        "cells:image.format.rootfs": {
+            "squashfs": "./plugins/image-rootfs-squashfs",
+            "dir": "./plugins/image-rootfs-dir"
+        },
         "cells:network.adapter": {
-            "bridge": "./lib/net-adapter-bridge"
+            "bridge": "./plugins/net-adapter-bridge"
         },
         "cells:network.service.dhcp": {
-            "dnsmasq": {
-                "module": "./lib/net-service-dnsmasq",
-                "object": "dhcp"
-            }
-        },
-        "cells:network.service.dns": {
-            "dnsmasq": {
-                "module": "./lib/net-service-dnsmasq",
-                "object": "dns"
-            }
-        },
-        "cells:network.service.gateway": {
-            "dnsmasq": {
-                "module": "./lib/net-service-dnsmasq",
-                "object": "gateway"
-            }
+            "dnsmasq": "./plugins/net-service-dnsmasq"
         },
         "cells:network.service.nat": {
             "iptables": {
-                "module": "./lib/net-service-iptables",
+                "module": "./plugins/net-service-iptables",
                 "object": "nat"
             }
         },
-        "cells:container": {
-            "ext": "./lib/container-ext"
+        "cells:node.interior": {
+            "ext": "./plugins/interior-ext",
+            "lxc": "./plugins/interior-lxc"
         }
     },
     "config": {

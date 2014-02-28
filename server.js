@@ -56,6 +56,7 @@ server.start(port, function (err) {
 });
 
 process.on('uncaughtException', function (err) {
+    logger.fatal('UncaughtException: ' + err.message);
     logErrors(err);
     logger.debug(err.stack);
     initiateExit(1);

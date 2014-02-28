@@ -25,15 +25,19 @@ var Class = require('js-class'),
     spawn = require('child_process').spawn;
 
 var InteriorBase = Class({
-    constructor: function (id, conf, params) {
-        this._id = id;
-        this._conf = conf;
-        this._logger  = params.logger;
-        this._monitor = params.monitor;
+    constructor: function (node, data) {
+        this._node = node;
+        this._conf = data.params;
+        this._logger  = data.logger;
+        this._monitor = data.params.monitor;
+    },
+
+    get node () {
+        return this._node;
     },
 
     get id () {
-        return this._id;
+        return this.node.id;
     },
 
     get conf () {
@@ -41,8 +45,10 @@ var InteriorBase = Class({
     },
 
     get execOpts () {
-        var opts = { env: _.extend(_.clone(process.env), { CONTAINER_ID: this._id }) };
-        this._conf.workdir && (opts.cwd = this._conf.workdir);
+        var opts = {
+            env: _.extend(_.clone(process.env), { NODE_ID: this.id }),
+            cwd: this.node.workdir
+        };
         this._conf.uid && (opts.uid = this._conf.uid);
         this._conf.gid && (opts.gid = this._conf.gid);
         typeof(this._conf.env) == 'object' && _.extend(opts.env, this._conf.env);
@@ -268,7 +274,7 @@ var ContractInterior = Class({
     load: function (opts) {
         this._partialResp = '';
         delete this._unloading;
-        (this._proc = spawn(process.env.SHELL, ['-c', 'exec ' + this._ctl], this.execOpts))
+        (this._proc = spawn(process.env.SHELL || '/bin/sh', ['-c', 'exec ' + this._ctl], this.execOpts))
             .on('error', this._procError.bind(this))
             .on('exit', this._procExit.bind(this));
         this._proc.stdout.on('data', this._procResponse.bind(this));
@@ -349,11 +355,11 @@ var ContractInterior = Class({
     }
 });
 
-module.exports = function (data, container, info, callback) {
+module.exports = function (data, node, info, callback) {
     var err, interior;
     try {
-        interior = data.params.ctl ? new ContractInterior(container.id, data.params, data.monitor)
-                                   : new SimpleInterior(container.id, data.params, data.monitor);
+        interior = data.params.ctl ? new ContractInterior(node, data)
+                                   : new SimpleInterior(node, data);
     } catch(e) {
         err = e;
     }

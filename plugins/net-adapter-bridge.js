@@ -15,7 +15,8 @@ var Class = require('js-class'),
     fs    = require('fs'),
     path  = require('path'),
     exec  = require('child_process').exec,
-    idgen = require('idgen');
+    idgen = require('idgen'),
+    shell = require('../lib/ShellExec').shell;
 
 var Adapter = Class({
     constructor: function (data, network) {
@@ -39,15 +40,15 @@ var Adapter = Class({
             })
             .with(this)
             .run(function () {
-                this._cmds([
-                    'brctl addbr ' + this._ifname,
-                    'ifconfig ' + this._ifname + ' ' +
-                            (this._hostIp ? this._hostIp.ip + ' netmask ' + this.network.subnet.mask : '') + ' up'
-                ], false, done);
+                shell(this.logger)
+                    .sh('brctl addbr ' + this._ifname)
+                    .sh('ifconfig ' + this._ifname + ' ' +
+                            (this._hostIp ? this._hostIp.ip + ' netmask ' + this.network.subnet.mask : '') + ' up')
+                    .run(done);
             });
     },
 
-    device: function () {
+    get device () {
         return {
             name: this._ifname,
             address: this._hostIp
@@ -55,33 +56,11 @@ var Adapter = Class({
     },
 
     destroy: function (done) {
-        this._cmds([
-            'ifconfig ' + this._ifname + ' down',
-            'brctl delbr ' + this._ifname
-        ], true, done);
-    },
-
-    _cmds: function (cmds, ignoreErrors, done) {
-        var f = flow.steps();
-        ignoreErrors && f.ignoreErrors();
-        cmds.forEach(function (cmd) { f.next(this._sh(cmd)); }, this);
-        f.with(this).run(done);
-    },
-
-    _sh: function (cmd) {
-        var self = this;
-        return function (next) {
-            self.logger.debug('EXEC ' + cmd);
-            exec(cmd, function (err, stdout, stderr) {
-                stdout && stdout.split("\n").forEach(function (line) {
-                    self.logger.debug('[STDOUT] ' + line);
-                });
-                stderr && stderr.split("\n").forEach(function (line) {
-                    self.logger.error('[STDERR] ' + line);
-                });
-                next(err);
-            });
-        };
+        shell(this.logger)
+            .sh('ifconfig ' + this._ifname + ' down')
+            .sh('brctl delbr ' + this._ifname)
+            .ignoreErrors()
+            .run(done);
     }
 });
 
