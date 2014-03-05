@@ -7,46 +7,11 @@ var Class = require('js-class'),
     spawn = require('child_process').spawn,
     sh    = require('../lib/ShellExec').sh;
 
-/*
-var LxcWait = Class(process.EventEmitter, {
-    constructor: function (lxc) {
-        this._proc = exec('lxc-wait -n ' + lxc.id + ' RUNNING', function (err, stdout, stderr) {
-            shlog(lxc._logger, stdout);
-            shlog(lxc._logger, stderr, true);
-            if (this._proc) {
-                delete this._proc;
-                if (this._timer) {
-                    clearTimeout(this._timer);
-                    delete this._timer;
-                }
-                this.emit('finish', err);
-            }
-        }.bind(this));
-        this._timer = setTimeout(function () {
-            delete this._timer;
-            this._proc && this._proc.kill('SIGTERM');
-            delete this._proc;
-            this.emit('finish', new Error('timeout'));
-        }.bind(this), 3000);
-    },
-
-    cancel: function (emit) {
-        this._timer && clearTimeout(this._timer);
-        delete this._timer;
-        if (this._proc) {
-            this._proc.kill('SIGTERM');
-            delete this._proc;
-            emit && this.emit('finish', new Error('aborted'));
-        }
-    }
-});
-*/
-
 var Lxc = Class({
-    constructor: function (node, data) {
+    constructor: function (node, params, monitor, logger) {
         this._node    = node;
-        this._logger  = node.logger;
-        this._monitor = data.monitor;
+        this._logger  = logger;
+        this._monitor = monitor;
 
         if (!node.image) {
             throw new Error('Image is required');
@@ -61,18 +26,18 @@ var Lxc = Class({
 
         this._conf = [
             'lxc.rootfs=' + this._mountpoint,
-            'lxc.utsname=' + (data.utsname || 'linux'),
+            'lxc.utsname=' + (params.utsname || 'linux'),
             'lxc.devttydir=',
-            'lxc.tty=' + (data.tty == null ? 4 : data.tty),
-            'lxc.pts=' + (data.pts == null ? 1024 : data.pts),
-            'lxc.cap.drop=sys_module mac_admin' + (data['drop-caps'] ? ' ' + data['drop-caps'] : '')
+            'lxc.tty=' + (params.tty == null ? 4 : params.tty),
+            'lxc.pts=' + (params.pts == null ? 1024 : params.pts),
+            'lxc.cap.drop=sys_module mac_admin' + (params['drop-caps'] ? ' ' + params['drop-caps'] : '')
         ];
-        var arch = data.arch || node.image.manifest.arch;
+        var arch = params.arch || node.image.manifest.arch;
         arch && this._conf.push('lxc.arch=' + arch);
-        var aaProfile = data['aa-profile'] || node.image.manifest['aa-profile'];
+        var aaProfile = params['aa-profile'] || node.image.manifest['aa-profile'];
         aaProfile && this._conf.push('lxc.aa_profile=' + aaProfile);
 
-        Array.isArray(data.nics) && data.nics.forEach(function (nic) {
+        Array.isArray(params.nics) && params.nics.forEach(function (nic) {
             var connectivity = typeof(nic) == 'string' ? { network: nic } : nic;
             var network = node.network(connectivity.network);
             if (!network) {
@@ -80,7 +45,7 @@ var Lxc = Class({
             }
             this._conf.push('lxc.network.type=veth');
             this._conf.push('lxc.network.flags=up');
-            network.adapter.device && this._conf.push('lxc.network.link=' + network.adapter.device);
+            network.adapter.device && this._conf.push('lxc.network.link=' + network.adapter.device.name);
             if (!isNaN(nic['address-index'])) {
                 var address = network.addressAt(nic['address-index']);
                 if (!address) {
@@ -92,7 +57,7 @@ var Lxc = Class({
             }
         }, this);
 
-        if (!data['no-default-cgroup']) {
+        if (!params['no-default-cgroup']) {
             this._conf = this._conf.concat([
                 'lxc.cgroup.devices.deny = a',
                 'lxc.cgroup.devices.allow = c *:* m',
@@ -116,42 +81,21 @@ var Lxc = Class({
             ]);
         }
 
-        Array.isArray(data['lxc-options']) && (this._conf = this._conf.concat(data['lxc-options']));
-
-        this._state = 'stopped';
+        Array.isArray(params['lxc-options']) && (this._conf = this._conf.concat(params['lxc-options']));
     },
 
     get id () {
         return this._node.id;
     },
 
-    start: function (opts) {
-        if (this._state == 'stopped') {
-            this._startContainer();
-        }
+    get lxcName () {
+        return this.id;
     },
 
-    stop: function (opts) {
-        if (this._state == 'starting') {
-            this._state = 'stopping';
-            if (this._wait) {
-                this._wait.cancel(true);
-                delete this._wait;
-            }
-            if (this._proc) {
-                this._proc.kill('SIGTERM');
-            }
-        } else if (this._state == 'running') {
-            this._state = 'stopping';
-            exec('lxc-stop -n ' + this.id, function () { });
-        }
-    },
-
-    _startContainer: function () {
-        this._monitor('state', this._state = 'starting');
-
+    start: function (opts, callback) {
         var conffile = path.join(this._node.workdir, 'lxc-config');
         var logfile  = path.join(this._node.workdir, 'lxc.log');
+        var confile  = path.join(this._node.workdir, 'lxc.console');
         var upperdir = path.join(this._node.workdir, 'rootfs-overlay');
 
         flow.steps()
@@ -173,44 +117,60 @@ var Lxc = Class({
                 );
             })
             .next(function (next) {
-                if (this._state == 'starting') {
-                    this._proc = spawn(process.env.SHELL || '/bin/sh', ['-c',
-                            'lxc-start -n ' + this.id + ' -f ' + conffile + ' -o ' + logfile
-                        ], {
-                            cwd: this._node.workdir,
-                            stdio: ['ignore', 'ignore', 'ignore']
+                this._logger.debug('Container start: ' + this.lxcName);
+                this._proc = spawn(process.env.SHELL || '/bin/sh', ['-c',
+                        'lxc-start -n ' + this.lxcName +
+                        ' -f ' + conffile +
+                        ' -o ' + logfile +
+                        ' -c ' + confile
+                    ], {
+                        cwd: this._node.workdir,
+                        stdio: ['ignore', 'ignore', 'ignore']
+                    });
+                this._proc
+                    .on('error', function (err) {
+                        this._logger.logError(err, {
+                            message: 'Container error: ' + err.message
                         });
-                    this._proc
-                        .on('error', function (err) {
-                            this._logger.error('Container Process Error: ' + err.message);
-                        }.bind(this))
-                        .on('exit', this.onContainerExit.bind(this));
-                    next();
-                } else {
-                    next(new Error('aborted'));
-                }
+                        this._cleanup('stopped');
+                    }.bind(this))
+                    .on('exit', function (code, signal) {
+                        this._logger.debug('Container exit: ' + (code == null ? 'killed ' + signal : code));
+                        this._proc.removeAllListeners();
+                        delete this._proc;
+                        this._cleanup('stopped');
+                    }.bind(this));
+                next();
             })
             .with(this)
-            .run(flow.Try.br(function () {
-                this._monitor('state', this._state = 'running');
-            }, function (err) {
-                if (this._proc) {
-                    this._proc.removeAllListeners();
-                    this._proc.kill('SIGTERM');
-                    delete this._proc;
-                }
-                this._cleanup();
-            }));
+            .run(function (err) {
+                err ? this._cleanup(null, function () { callback(err); }) : callback();
+            });
     },
 
-    onContainerExit: function (code, signal) {
-        delete this._proc;
-        this._cleanup();
+    stop: function (opts, callback) {
+        sh(this._logger, 'lxc-stop -n ' + this.lxcName, function () {
+            this._cleanup(null, callback);
+        }.bind(this));
     },
 
-    _cleanup: function () {
-        exec('umount ' + this._mountpoint, function () {
-            this._monitor('state', this._state = 'stopped');
+    dump: function () {
+        return {
+            name: this.lxcName,
+            pid: this._proc ? this._proc.pid : undefined
+        };
+    },
+
+    _cleanup: function (state, done) {
+        if (this._proc) {
+            this._logger.debug('Container terminate: ' + this.lxcName);
+            this._proc.removeAllListeners();
+            this._proc.kill('SIGTERM');
+            delete this._proc;
+        }
+        sh(this._logger, 'umount ' + this._mountpoint, function () {
+            state != null && this._monitor('state', state);
+            done && done();
         }.bind(this));
     }
 });
@@ -222,7 +182,7 @@ module.exports = function (data, node, info, callback) {
             var interior;
             if (!err) {
                 try {
-                    interior = new Lxc(node, data);
+                    interior = new Lxc(node, data.params, data.monitor, data.logger);
                 } catch (e) {
                     err = e;
                 }

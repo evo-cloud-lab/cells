@@ -48,6 +48,12 @@ var Adapter = Class({
             });
     },
 
+    dump: function () {
+        return {
+            device: this.device
+        };
+    },
+
     get device () {
         return {
             name: this._ifname,

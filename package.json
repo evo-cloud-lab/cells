@@ -1,7 +1,7 @@
 {
     "name": "cells",
     "description": "VM/Container based cluster manager",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "author": "Yisui Hu <easeway@gmail.com>",
     "scripts": {
         "test": "mocha --reporter spec test/*-test.js",
@@ -13,7 +13,8 @@
     },
     "main": "./index.js",
     "bin": {
-        "cells-server": "./server.js"
+        "cells-server": "./server.js",
+        "cells": "./cli.js"
     },
     "dependencies": {
         "js-class":   "0.0.2",

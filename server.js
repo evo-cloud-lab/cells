@@ -13,7 +13,7 @@ function logErrors(err) {
     if (err.code == 'ERRORS' && Array.isArray(err.errors)) {
         err.errors.forEach(logErrors);
     } else {
-        logger.error(err.message);
+        logger.logError(err);
     }
 }
 
@@ -58,7 +58,6 @@ server.start(port, function (err) {
 process.on('uncaughtException', function (err) {
     logger.fatal('UncaughtException: ' + err.message);
     logErrors(err);
-    logger.debug(err.stack);
     initiateExit(1);
 });
 

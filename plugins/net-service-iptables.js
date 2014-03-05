@@ -3,9 +3,9 @@ var Class = require('js-class'),
     shell = require('../lib/ShellExec').shell;
 
 var NATRules = Class({
-    constructor: function (data, network) {
+    constructor: function (data, service) {
         this.logger = data.logger;
-        var subnet = network.subnet.base + '/' + network.subnet.bitmask;
+        var subnet = service.network.subnet.base + '/' + service.network.subnet.bitmask;
         this.rule = 'POSTROUTING -s ' + subnet + ' ! -d ' + subnet + ' -j MASQUERADE';
     },
 
@@ -15,15 +15,21 @@ var NATRules = Class({
 
     stop: function (callback) {
         shell(this.logger).sh('iptables -t nat -D ' + this.rule).run(callback);
+    },
+
+    dump: function () {
+        return {
+            rules: [this.rule]
+        };
     }
 });
 
 module.exports = {
-    nat: function (data, network, info, callback) {
+    nat: function (data, service, info, callback) {
         exec('iptables -V', function (err) {
             var svc;
-            if (!err && network.adapter.device) {
-                svc = new NATRules(data, network);
+            if (!err && service.network.adapter.device) {
+                svc = new NATRules(data, service);
             }
             callback(err, svc);
         });
