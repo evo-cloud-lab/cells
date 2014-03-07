@@ -48,8 +48,8 @@
             "squashfs": "./plugins/image-rootfs-squashfs",
             "dir": "./plugins/image-rootfs-dir"
         },
-        "cells:network.adapter": {
-            "bridge": "./plugins/net-adapter-bridge"
+        "cells:network.provider": {
+            "linux-bridge": "./plugins/net-provider-bridge"
         },
         "cells:network.service.dhcp": {
             "dnsmasq": "./plugins/net-service-dnsmasq"
@@ -61,7 +61,6 @@
             }
         },
         "cells:node.interior": {
-            "ext": "./plugins/interior-ext",
             "lxc": "./plugins/interior-lxc",
             "qemu": "./plugins/interior-qemu"
         }

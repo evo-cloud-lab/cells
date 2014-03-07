@@ -6,10 +6,19 @@ var Class = require('js-class'),
 var Dnsmasq = Class(ShellService, {
     constructor: function (data, service) {
         ShellService.prototype.constructor.call(this, data, service);
+        var device = this.network.device;
+        if (!device) {
+            throw new Error('Network device required');
+        }
+        var subnet = this.network.subnet;
+        if (!subnet) {
+            throw new Error('Subnet unavailable');
+        }
+
         var conf = data.params;
         this.options = [
             conf.debug ? '-d' : '--keep-in-foreground',
-            '--interface=' + this.network.adapter.device.name,
+            '--interface=' + device.name,
             '--except-interface=lo',
             '--bind-interfaces',
             '--strict-order',
@@ -21,17 +30,17 @@ var Dnsmasq = Class(ShellService, {
         var staticIps = conf['static'];
         if (typeof(staticIps) == 'object' && staticIps.start && staticIps.count) {
             for (var i = 0; i < staticIps.count; i ++) {
-                var address = this.network.addressAt(staticIps.start + i);
+                var address = subnet.addressAt(staticIps.start + i);
                 address && this.options.push('--dhcp-host=' + address.mac + ',' + address.ip);
             }
         }
         var dynamicIps = conf['dynamic'];
         typeof(dynamicIps) == 'object' || (dynamicIps = {});
         isNaN(dynamicIps.start) && (dynamicIps.start = 0);
-        isNaN(dynamicIps.count) && (dynamicIps.count = this.network.addressCount - dynamicIps.start);
+        isNaN(dynamicIps.count) && (dynamicIps.count = subnet.addresses - dynamicIps.start);
         if (dynamicIps.count > 0) {
-            this.options.push('--dhcp-range=' + this.network.addressAt(dynamicIps.start).ip + ',' +
-                                                this.network.addressAt(dynamicIps.start + dynamicIps.count - 1).ip);
+            this.options.push('--dhcp-range=' + subnet.addressAt(dynamicIps.start).ip + ',' +
+                                                subnet.addressAt(dynamicIps.start + dynamicIps.count - 1).ip);
         }
         Array.isArray(conf['arguments']) && (this.options = this.options.concat(conf['arguments']));
         this.command = 'dnsmasq ' + this.options.join(' ');
@@ -41,9 +50,15 @@ var Dnsmasq = Class(ShellService, {
 module.exports = function (data, service, info, callback) {
     exec('dnsmasq -v', function (err) {
         var svc;
-        if (!err && service.network.adapter.device) {
-            svc = new Dnsmasq(data, service);
+        if (!err && service.network.device) {
+            try {
+                svc = new Dnsmasq(data, service);
+            } catch (e) {
+                err = e;
+            }
         }
         callback(err, svc);
     });
 };
+
+module.exports.ServiceClass = Dnsmasq;

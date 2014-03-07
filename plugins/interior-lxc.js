@@ -45,14 +45,19 @@ var Lxc = Class({
             }
             this._conf.push('lxc.network.type=veth');
             this._conf.push('lxc.network.flags=up');
-            network.adapter.device && this._conf.push('lxc.network.link=' + network.adapter.device.name);
+            var device = network.device;
+            device && device.type == 'bridge' && this._conf.push('lxc.network.link=' + device.name);
             if (!isNaN(nic['address-index'])) {
-                var address = network.addressAt(nic['address-index']);
+                var subnet = network.subnet;
+                if (!subnet) {
+                    throw new Error('Subnet unavailable');
+                }
+                var address = subnet.addressAt(nic['address-index']);
                 if (!address) {
                     throw new Error('Network address invalid: ' + nic['address-index'] + ' in ' + network.name);
                 } else {
                     this._conf.push('lxc.network.hwaddr=' + address.mac);
-                    this._conf.push('lxc.network.ipv4=' + address.ip);
+                    address.ip && this._conf.push('lxc.network.ipv4=' + address.ip);
                 }
             }
         }, this);

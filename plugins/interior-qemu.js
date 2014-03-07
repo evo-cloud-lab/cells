@@ -40,16 +40,19 @@ var Qemu = Class({
             if (!network) {
                 throw new Error('Network not found: ' + connectivity.network);
             }
-            if (!network.adapter.device) {
-                throw new Error('Interface unknown for network: ' + network.name);
+            var info = { network: network };
+
+            var device = network.device;
+            if (device && device.type == 'bridge') {
+                info.bridge = device.name;
             }
-            var info = {
-                network: network,
-                bridge: network.adapter.device.name
-            };
 
             if (!isNaN(nic['address-index'])) {
-                var address = network.addressAt(nic['address-index']);
+                var subnet = network.subnet;
+                if (!subnet) {
+                    throw new Error('Subnet unavailable');
+                }
+                var address = subnet.addressAt(nic['address-index']);
                 if (!address) {
                     throw new Error('Network address invalid: ' + nic['address-index'] + ' in ' + network.name);
                 } else {
@@ -57,8 +60,13 @@ var Qemu = Class({
                 }
             }
             var index = this._nics.length;
-            info.script = path.join(node.workdir, 'ifup' + index + '.sh');
-            info.params = '-netdev tap,id=nic' + index + ',script=' + info.script + ' -device ' + (nic['device'] || 'e1000');
+            info.params = '-netdev tap,id=nic' + index
+            if (info.bridge) {
+                info.script = path.join(node.workdir, 'ifup' + index + '.sh');
+                info.params += ',script=' + info.script;
+            }
+
+            info.params += ' -device ' + (nic['device'] || 'e1000');
             info.mac && (info.params += ',mac=' + info.mac);
             nic['pxe'] || (info.params += ',romfile=');
             info.params += ',netdev=nic' + index;
@@ -86,18 +94,22 @@ var Qemu = Class({
             .chain()
             .next(flow.each(this._nics)
                       .do(function (nic, next) {
-                            flow.steps()
-                                .next(function (next) {
-                                    fs.writeFile(nic.script, [
-                                        '#!/bin/sh',
-                                        'ifconfig $1 up',
-                                        'brctl addif ' + nic.bridge + ' $1'
-                                    ].join("\n"), next);
-                                })
-                                .next(function (next) {
-                                    fs.chmod(nic.script, '0755', next);
-                                })
-                                .run(next);
+                            if (nic.script) {
+                                flow.steps()
+                                    .next(function (next) {
+                                        fs.writeFile(nic.script, [
+                                            '#!/bin/sh',
+                                            'ifconfig $1 up',
+                                            'brctl addif ' + nic.bridge + ' $1'
+                                        ].join("\n"), next);
+                                    })
+                                    .next(function (next) {
+                                        fs.chmod(nic.script, '0755', next);
+                                    })
+                                    .run(next);
+                            } else {
+                                next();
+                            }
                       })
             )
             .next(function (next) {

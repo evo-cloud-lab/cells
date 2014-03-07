@@ -5,8 +5,12 @@ var Class = require('js-class'),
 var NATRules = Class({
     constructor: function (data, service) {
         this.logger = data.logger;
-        var subnet = service.network.subnet.base + '/' + service.network.subnet.bitmask;
-        this.rule = 'POSTROUTING -s ' + subnet + ' ! -d ' + subnet + ' -j MASQUERADE';
+        var subnet = service.network.subnet;
+        if (!subnet) {
+            throw new Error('Subnet unavailable');
+        }
+        var network = subnet.toString();
+        this.rule = 'POSTROUTING -s ' + network + ' ! -d ' + network + ' -j MASQUERADE';
     },
 
     start: function (callback) {
@@ -25,11 +29,17 @@ var NATRules = Class({
 });
 
 module.exports = {
+    ServiceClass: NATRules,
+
     nat: function (data, service, info, callback) {
         exec('iptables -V', function (err) {
             var svc;
-            if (!err && service.network.adapter.device) {
-                svc = new NATRules(data, service);
+            if (!err && service.network.subnet) {
+                try {
+                    svc = new NATRules(data, service);
+                } catch (e) {
+                    err = e;
+                }
             }
             callback(err, svc);
         });
