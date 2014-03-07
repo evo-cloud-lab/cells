@@ -31,49 +31,54 @@ var Qemu = Class({
         var memory = params.memory || node.image.manifest.memory;
         memory && (this._cmd += ' -m ' + memory);
 
-        this._cmd += ' -display none';
+        this._cmd += ' -display ' + (params.display || 'none');
 
         this._nics = [];
-        Array.isArray(params.nics) && params.nics.forEach(function (nic) {
-            var connectivity = typeof(nic) == 'string' ? { network: nic } : nic;
+        Array.isArray(params.nics) && params.nics.forEach(function (info) {
+            var connectivity = typeof(info) == 'string' ? { network: info } : info;
             var network = node.network(connectivity.network);
             if (!network) {
                 throw new Error('Network not found: ' + connectivity.network);
             }
-            var info = { network: network };
+            var nic = {
+                network: connectivity.network,
+                device: info['device'] || 'e1000',
+                pxe: info['pxe']
+            };
 
             var device = network.device;
             if (device && device.type == 'bridge') {
-                info.bridge = device.name;
+                nic.bridge = device.name;
             }
 
-            if (!isNaN(nic['address-index'])) {
+            var addrIndex = parseInt(info['address-index']);
+            if (!isNaN(addrIndex)) {
                 var subnet = network.subnet;
                 if (!subnet) {
                     throw new Error('Subnet unavailable');
                 }
-                var address = subnet.addressAt(nic['address-index']);
+                var address = subnet.addressAt(addrIndex);
                 if (!address) {
-                    throw new Error('Network address invalid: ' + nic['address-index'] + ' in ' + network.name);
+                    throw new Error('Network address invalid: ' + addrIndex + ' in ' + network.name);
                 } else {
-                    info.mac = address.mac;
+                    nic.address = address;
                 }
             }
             var index = this._nics.length;
-            info.params = '-netdev tap,id=nic' + index
-            if (info.bridge) {
-                info.script = path.join(node.workdir, 'ifup' + index + '.sh');
-                info.params += ',script=' + info.script;
+            var args = '-netdev tap,id=nic' + index
+            if (nic.bridge) {
+                nic.ifup = path.join(node.workdir, 'ifup' + index + '.sh');
+                args += ',script=' + nic.ifup;
             }
 
-            info.params += ' -device ' + (nic['device'] || 'e1000');
-            info.mac && (info.params += ',mac=' + info.mac);
-            nic['pxe'] || (info.params += ',romfile=');
-            info.params += ',netdev=nic' + index;
+            args += ' -device ' + nic.device;
+            nic.address && nic.address.mac && (args += ',mac=' + nic.address.mac);
+            nic.pxe || (args += ',romfile=');
+            args += ',netdev=nic' + index;
 
-            this._nics.push(info);
+            this._nics.push(nic);
 
-            this._cmd += ' ' + info.params;
+            this._cmd += ' ' + args;
         }, this);
 
         this._disk = path.join(node.workdir, 'system' + path.extname(this._baseImage));
@@ -89,22 +94,30 @@ var Qemu = Class({
         return this._node.id;
     },
 
+    get name () {
+        return 'qemu';
+    },
+
+    get nics () {
+        return this._nics;
+    },
+
     load: function (opts, callback) {
         flow.steps()
             .chain()
             .next(flow.each(this._nics)
                       .do(function (nic, next) {
-                            if (nic.script) {
+                            if (nic.ifup) {
                                 flow.steps()
                                     .next(function (next) {
-                                        fs.writeFile(nic.script, [
+                                        fs.writeFile(nic.ifup, [
                                             '#!/bin/sh',
                                             'ifconfig $1 up',
                                             'brctl addif ' + nic.bridge + ' $1'
                                         ].join("\n"), next);
                                     })
                                     .next(function (next) {
-                                        fs.chmod(nic.script, '0755', next);
+                                        fs.chmod(nic.ifup, '0755', next);
                                     })
                                     .run(next);
                             } else {
@@ -138,7 +151,7 @@ var Qemu = Class({
     },
 
     start: function (opts, callback) {
-        this._logger.debug('QEMU spawn: ' + this._cmd);
+        this._logger.debug('[QEMU.START] ' + this._cmd);
         this._proc = spawn(process.env.SHELL || '/bin/sh', ['-c', this._cmd], {
                 cwd: this._node.workdir,
                 stdio: ['ignore', 'ignore', 'ignore']
@@ -146,12 +159,12 @@ var Qemu = Class({
         this._proc
             .on('error', function (err) {
                 this._logger.logError(err, {
-                    message: 'QEMU error: ' + err.message
+                    message: '[QEMU.ERR] ' + err.message
                 });
                 this._cleanup('stopped');
             }.bind(this))
             .on('exit', function (code, signal) {
-                this._logger.debug('QEMU exit: ' + (code == null ? 'killed ' + signal : code));
+                this._logger.debug('[QEMU.EXIT] ' + (code == null ? 'killed ' + signal : code));
                 this._proc.removeAllListeners();
                 delete this._proc;
                 this._cleanup('stopped');
@@ -176,7 +189,7 @@ var Qemu = Class({
             done && done();
         }.bind(this);
         if (this._proc) {
-            this._logger.debug('QEMU terminate: ' + this.lxcName);
+            this._logger.debug('[QEMU.TERM] ' + this.lxcName);
             this._proc.removeAllListeners();
             this._proc.kill('SIGTERM');
             done ? this._proc.on('exit', complete) : complete();

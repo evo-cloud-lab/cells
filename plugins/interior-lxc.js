@@ -37,29 +37,44 @@ var Lxc = Class({
         var aaProfile = params['aa-profile'] || node.image.manifest['aa-profile'];
         aaProfile && this._conf.push('lxc.aa_profile=' + aaProfile);
 
-        Array.isArray(params.nics) && params.nics.forEach(function (nic) {
-            var connectivity = typeof(nic) == 'string' ? { network: nic } : nic;
+        this._nics = [];
+
+        Array.isArray(params.nics) && params.nics.forEach(function (info) {
+            var nic = {};
+
+            var connectivity = typeof(info) == 'string' ? { network: info } : info;
             var network = node.network(connectivity.network);
             if (!network) {
                 throw new Error('Network not found: ' + connectivity.network);
             }
+            nic.network = connectivity.network;
+
             this._conf.push('lxc.network.type=veth');
             this._conf.push('lxc.network.flags=up');
+
             var device = network.device;
-            device && device.type == 'bridge' && this._conf.push('lxc.network.link=' + device.name);
-            if (!isNaN(nic['address-index'])) {
+            if (device && device.type == 'bridge') {
+                this._conf.push('lxc.network.link=' + device.name);
+                nic.bridge = device.name;
+            }
+
+            var addrIndex = parseInt(info['address-index']);
+            if (!isNaN(addrIndex)) {
                 var subnet = network.subnet;
                 if (!subnet) {
                     throw new Error('Subnet unavailable');
                 }
-                var address = subnet.addressAt(nic['address-index']);
+                var address = subnet.addressAt(addrIndex);
                 if (!address) {
-                    throw new Error('Network address invalid: ' + nic['address-index'] + ' in ' + network.name);
+                    throw new Error('Network address invalid: ' + addrIndex + ' in ' + network.name);
                 } else {
+                    nic.address = address;
                     this._conf.push('lxc.network.hwaddr=' + address.mac);
                     address.ip && this._conf.push('lxc.network.ipv4=' + address.ip);
                 }
             }
+
+            this._nics.push(nic);
         }, this);
 
         if (!params['no-default-cgroup']) {
@@ -93,6 +108,14 @@ var Lxc = Class({
         return this._node.id;
     },
 
+    get name () {
+        return 'lxc';
+    },
+
+    get nics () {
+        return this._nics;
+    },
+
     get lxcName () {
         return this.id;
     },
@@ -122,7 +145,7 @@ var Lxc = Class({
                 );
             })
             .next(function (next) {
-                this._logger.debug('Container start: ' + this.lxcName);
+                this._logger.debug('[LXC.START] ' + this.lxcName);
                 this._proc = spawn(process.env.SHELL || '/bin/sh', ['-c',
                         'lxc-start -n ' + this.lxcName +
                         ' -f ' + conffile +
@@ -135,12 +158,12 @@ var Lxc = Class({
                 this._proc
                     .on('error', function (err) {
                         this._logger.logError(err, {
-                            message: 'Container error: ' + err.message
+                            message: '[LXC.ERR] ' + err.message
                         });
                         this._cleanup('stopped');
                     }.bind(this))
                     .on('exit', function (code, signal) {
-                        this._logger.debug('Container exit: ' + (code == null ? 'killed ' + signal : code));
+                        this._logger.debug('[LXC.EXIT] ' + (code == null ? 'killed ' + signal : code));
                         this._proc.removeAllListeners();
                         delete this._proc;
                         this._cleanup('stopped');
@@ -161,14 +184,14 @@ var Lxc = Class({
 
     dump: function () {
         return {
-            name: this.lxcName,
+            container: this.lxcName,
             pid: this._proc ? this._proc.pid : undefined
         };
     },
 
     _cleanup: function (state, done) {
         if (this._proc) {
-            this._logger.debug('Container terminate: ' + this.lxcName);
+            this._logger.debug('[LXC.TERM] ' + this.lxcName);
             this._proc.removeAllListeners();
             this._proc.kill('SIGTERM');
             delete this._proc;

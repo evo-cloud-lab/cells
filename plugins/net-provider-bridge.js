@@ -32,6 +32,10 @@ var NetworkProvider = Class({
         this._services = {};
     },
 
+    get name () {
+        return 'linux-bridge';
+    },
+
     get subnet () {
         return this._subnet;
     },
@@ -93,7 +97,7 @@ var NetworkProvider = Class({
         if (!this._subnet) {
             done(Errors.unavail('subnet'));
         } else {
-            this.logger.info('SUBNET: ' + this._subnet.toString());
+            this.logger.notice('[SUBNET] ' + this._subnet.toString());
             done();
         }
     },

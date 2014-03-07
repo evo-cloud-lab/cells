@@ -62,7 +62,11 @@
         },
         "cells:node.interior": {
             "lxc": "./plugins/interior-lxc",
-            "qemu": "./plugins/interior-qemu"
+            "qemu": "./plugins/interior-qemu",
+            "ext": {
+                "module": "./plugins/interior-ext",
+                "auto": false
+            }
         }
     },
     "config": {
