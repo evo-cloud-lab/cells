@@ -28,7 +28,7 @@ function initiateExit(code) {
     if (server.stop(function (err) {
         err ? fatal(err) : process.exit(code || 0);
     })) {
-        logger.info('Exiting ...');
+        logger.notice('Exiting ...');
         return true;
     }
     return false;
@@ -42,16 +42,16 @@ function terminateByUser() {
     }
 }
 
-logger.info('Scanning plugins ...');
+logger.notice('Scanning plugins ...');
 plugins.instance.scan();
 
-logger.info('Starting API server ...');
+logger.notice('Starting API server ...');
 var port = process.env.PORT || 3000;
 server.start(port, function (err) {
     if (err) {
         fatal(err);
     } else {
-        logger.info('API server is ready on port ' + port);
+        logger.notice('API server is ready on port ' + port);
     }
 });
 

@@ -8,10 +8,11 @@ var Class = require('js-class'),
     sh    = require('../lib/ShellExec').sh;
 
 var Lxc = Class({
-    constructor: function (node, params, monitor, logger) {
+    constructor: function (node, id, params, monitor, logger) {
         this._node    = node;
         this._logger  = logger;
         this._monitor = monitor;
+        this._lxcName = 'cells:' + id;
 
         if (!node.image) {
             throw new Error('Image is required');
@@ -117,7 +118,7 @@ var Lxc = Class({
     },
 
     get lxcName () {
-        return this.id;
+        return this._lxcName;
     },
 
     start: function (opts, callback) {
@@ -210,7 +211,7 @@ module.exports = function (data, node, info, callback) {
             var interior;
             if (!err) {
                 try {
-                    interior = new Lxc(node, data.params, data.monitor, data.logger);
+                    interior = new Lxc(node, data.id, data.params, data.monitor, data.logger);
                 } catch (e) {
                     err = e;
                 }
